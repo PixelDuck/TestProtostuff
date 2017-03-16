@@ -53,10 +53,8 @@ public class TestProtostuff {
   }
 
   static {
-    RuntimeSchema.register(ASchema.class);
-    RuntimeSchema.register(BSchema.class);
-    RuntimeSchema.register(WrapperMapBByString.class);
-    RuntimeSchema.register(WrapperMapObjectByString.class);
+    RuntimeSchema.register(A.class, new ASchema());
+    RuntimeSchema.register(B.class, new BSchema());
   }
 
   public static void main(String[] args) throws IOException {
