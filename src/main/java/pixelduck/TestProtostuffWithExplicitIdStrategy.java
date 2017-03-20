@@ -8,76 +8,61 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.protostuff.CollectionSchema;
 import io.protostuff.Input;
 import io.protostuff.LinkedBuffer;
+import io.protostuff.MapSchema;
 import io.protostuff.Output;
 import io.protostuff.ProtobufIOUtil;
 import io.protostuff.Schema;
 import io.protostuff.UninitializedMessageException;
-import io.protostuff.runtime.RuntimeSchema;
+import io.protostuff.runtime.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pixelduck.pojo.B;
+import pixelduck.protostuff.BSer;
 
 /**
- * Test protostuff.
+ * Test protostuff with an ExplicitIdStrategy use to save metadata.
  */
-public class TestProtostuff {
+public class TestProtostuffWithExplicitIdStrategy {
 
-  @Data
-  @NoArgsConstructor
-  @AllArgsConstructor
-  static class A {
-    private String name;
-    private Map<String, B> mapOfB = new HashMap<>();
-    private Map<String, Object> mapOfObject = new HashMap<>();
-  }
+  public static class IdStrategyFactory implements IdStrategy.Factory {
 
-  @Data
-  @NoArgsConstructor
-  @AllArgsConstructor
-  static class B {
-    private String name;
-//    private int version;
-    private String author;
-  }
+    static int INSTANCE_COUNT = 0;
 
-  @Data
-  @NoArgsConstructor
-  @AllArgsConstructor
-  public static class WrapperMapObjectByString {
-    private Map<String, Object> mapObjectByString;
-  }
+    ExplicitIdStrategy.Registry r = new ExplicitIdStrategy.Registry();
 
-  @Data
-  @NoArgsConstructor
-  @AllArgsConstructor
-  public static class WrapperMapBByString {
-    private Map<String, B> mapBByString;
-  }
+    public IdStrategyFactory()
+    {
+      ++INSTANCE_COUNT;
+    }
 
-  public static void main(String[] args) throws IOException {
-    RuntimeSchema.register(A.class, new ASchema());
-    RuntimeSchema.register(B.class, new BSchema());
-    A a = new A();
-    a.name = "A-name";
-//    a.mapOfB.put("first-key", new B("first"));
-//    a.mapOfB.put("second-key", new B("second"));
-//    a.mapOfObject.put("third-key", new B("third"));
-//    a.mapOfObject.put("fourth-key", new B("fourth"));
-//    a.mapOfB.put("first-key", new B("first", 1, "oma"));
-//    a.mapOfB.put("second-key", new B("second", 1, "oma"));
-//    a.mapOfObject.put("third-key", new B("third", 1, "oma"));
-//    a.mapOfObject.put("fourth-key", new B("fourth", 1, "oma"));
-    a.mapOfB.put("first-key", new B("first", "oma"));
-    a.mapOfB.put("second-key", new B("second", "oma"));
-    a.mapOfObject.put("third-key", new B("third", "oma"));
-    a.mapOfObject.put("fourth-key", new B("fourth", "oma"));
+    @Override
+    public IdStrategy create()
+    {
+      return r.strategy;
+    }
 
-    write("demo", 3, a);
-    read("demo", 1);
-    read("demo", 2);
-    read("demo", 3);
+    @Override
+    public void postCreate()
+    {
+      r.registerCollection(CollectionSchema.MessageFactories.ArrayList, 1)
+          .registerCollection(CollectionSchema.MessageFactories.HashSet, 2)
+          .registerCollection(CollectionSchema.MessageFactories.LinkedList, 3)
+          .registerCollection(CollectionSchema.MessageFactories.TreeSet, 4);
+
+      r.registerMap(MapSchema.MessageFactories.HashMap, 1)
+          .registerMap(MapSchema.MessageFactories.LinkedHashMap, 2)
+          .registerMap(MapSchema.MessageFactories.TreeMap, 3);
+
+      r.registerPojo(A.class, 1)
+          .registerPojo(BSer.B_SCHEMA, BSer.B_PIPE_SCHEMA, 2)
+          .registerPojo(WrapperMapObjectByString.class, 3)
+          .registerPojo(WrapperMapBByString.class, 4);
+//      r = null;
+    }
   }
 
   public static void write(String key, int version, A a) throws IOException {
@@ -97,6 +82,64 @@ public class TestProtostuff {
       System.out.println("Read version " + version + " => " + ret);
     }
   }
+
+
+  public static void main(String[] args) throws IOException {
+    System.setProperty("protostuff.runtime.id_strategy_factory",
+        "pixelduck.TestProtostuffWithExplicitIdStrategy$IdStrategyFactory");
+//    RuntimeSchema.register(A.class, new ASchema());
+//    RuntimeSchema.register(B.class, new BSchema());
+    A a = new A();
+    a.setName("A-name");
+//    a.getMapOfB().put("first-key", new B("first"));
+//    a.getMapOfB().put("second-key", new B("second"));
+//    a.getMapOfObject().put("third-key", new B("third"));
+//    a.getMapOfObject().put("fourth-key", new B("fourth"));
+    a.getMapOfB().put("first-key", new B("first", 1, "oma"));
+    a.getMapOfB().put("second-key", new B("second", 1, "oma"));
+    a.getMapOfObject().put("third-key", new B("third", 1, "oma"));
+    a.getMapOfObject().put("fourth-key", new B("fourth", 1, "oma"));
+//    a.getMapOfB().put("first-key", new B("first", "oma"));
+//    a.getMapOfB().put("second-key", new B("second", "oma"));
+//    a.getMapOfObject().put("third-key", new B("third", "oma"));
+//    a.getMapOfObject().put("fourth-key", new B("fourth", "oma"));
+
+    write("demo_expIdStrat", 5, a);
+    // first we use pojo.B with a unique field name
+    read("demo_expIdStrat", 1);
+    // then we add two new fields
+    read("demo_expIdStrat", 2);
+    // now we use the same pojo in a different package with teh same field
+    read("demo_expIdStrat", 3);
+    // now we remove the field in the middle
+    read("demo_expIdStrat", 4);
+    // finally we get pack to the original class in pojo package but with the field which was removed
+    read("demo_expIdStrat", 5);
+  }
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  static class A {
+    private String name;
+    private Map<String, B> mapOfB = new HashMap<>();
+    private Map<String, Object> mapOfObject = new HashMap<>();
+  }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WrapperMapObjectByString {
+      private Map<String, Object> mapObjectByString;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WrapperMapBByString {
+      private Map<String, B> mapBByString;
+    }
+
 
   static class ASchema implements Schema<A> {
     private final static int INDEX_NAME = 1;
@@ -182,87 +225,4 @@ public class TestProtostuff {
     }
   }
 
-  static class BSchema implements Schema<B> {
-    private final static int INDEX_NAME = 1;
-    private final static int INDEX_VERSION = 2;
-    private final static int INDEX_AUTHOR = 3;
-
-    @Override
-    public String getFieldName(int i) {
-      switch(i) {
-      case INDEX_NAME: return "name";
-      case INDEX_VERSION: return "version";
-      case INDEX_AUTHOR: return "author";
-      default: return null;
-      }
-    }
-
-    @Override
-    public int getFieldNumber(String s) {
-      switch(s) {
-      case "name": return INDEX_NAME;
-      case "version": return INDEX_VERSION;
-      case "author": return INDEX_AUTHOR;
-      default: return 0;
-      }
-    }
-
-    @Override
-    public boolean isInitialized(B b) {
-      return b.getName() != null;
-    }
-
-    @Override
-    public B newMessage() {
-      return new B();
-    }
-
-    @Override
-    public String messageName() {
-      return "MyClassB";
-    }
-
-    @Override
-    public String messageFullName() {
-      return "MyClassB";
-    }
-
-    @Override
-    public Class<? super B> typeClass() {
-      return B.class;
-    }
-
-    @Override
-    public void mergeFrom(Input input, B b) throws IOException {
-      while(true) {
-        int number = input.readFieldNumber(this);
-        switch(number) {
-        case 0: // indicates end of serialization
-          return;
-        case INDEX_NAME:
-          b.setName(input.readString());
-          break;
-//        case INDEX_VERSION:
-//          b.version = input.readInt32();
-//          break;
-        case INDEX_AUTHOR:
-          b.setAuthor(input.readString());
-          break;
-        default:
-          input.handleUnknownField(number, this);
-          break;
-        }
-      }
-    }
-
-    @Override
-    public void writeTo(Output output, B b) throws IOException {
-      if (b.getName() == null) {
-        throw new UninitializedMessageException(b, this);
-      }
-      output.writeString(INDEX_NAME, b.getName(), false);
-//      output.writeInt32(INDEX_VERSION, b.getVersion(), false);
-      output.writeString(INDEX_AUTHOR, b.getAuthor(), false);
-    }
-  }
 }
