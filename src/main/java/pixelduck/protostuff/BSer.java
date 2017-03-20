@@ -11,6 +11,7 @@ import pixelduck.pojo.B;
 
 /**
  * Definition of schema for class B.
+ * The two schemas should be updated.
  */
 public final class BSer {
   private BSer() {
